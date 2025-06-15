@@ -1,1 +1,22 @@
-.venv*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# Airflow specific
+logs/
+airflow.db
+webserver_config.py
+unittests.cfg
+.idea/ # If using PyCharm
+.vscode/ # If using VSCode
+
+# Data directories
+data/ # Added to ignore the downloaded and processed data
+temp_downloads/
+ml-1m_dataset/

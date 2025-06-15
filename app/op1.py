@@ -51,25 +51,3 @@ def download_and_extract_zip(url, download_dir, extract_dir):
         pass # Keeping it for now for verification
 
     return True
-
-if __name__ == "__main__":
-    movielens_url = "http://files.grouplens.org/datasets/movielens/ml-1m.zip"
-    download_directory = "temp_downloads" # Temporary directory to save the zip
-    extraction_directory = "ml-1m_dataset" # Directory where the content will be extracted
-
-    success = download_and_extract_zip(movielens_url, download_directory, extraction_directory)
-
-    if success:
-        print(f"\nMovieLens 1M dataset should now be in: {extraction_directory}")
-        # You can now proceed to load data from 'ml-1m_dataset/ml-1m/'
-        # List contents to verify
-        print("\nContents of extraction directory:")
-        for root, dirs, files in os.walk(extraction_directory):
-            level = root.replace(extraction_directory, '').count(os.sep)
-            indent = ' ' * 4 * (level)
-            print(f'{indent}{os.path.basename(root)}/')
-            subindent = ' ' * 4 * (level + 1)
-            for f in files:
-                print(f'{subindent}{f}')
-    else:
-        print("Failed to download and extract the dataset.")
