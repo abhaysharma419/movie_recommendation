@@ -147,24 +147,32 @@ def process_and_merge_data(data_dir='ml-1m_dataset/ml-1m/'):
         values='Rating'
     )
 
-    # Replace NaNs with 0
-    user_movie_matrix = user_movie_matrix.fillna(0)
+    # Convert the DataFrame to a sparse matrix (CSR format is good for row-wise operations like cosine similarity)
+    # Fill NaNs with 0 before converting to sparse, as sparse matrices typically don't handle NaNs.
+    # However, pivot_table with fill_value=0 can directly create a sparse representation.
+    # For simplicity and to ensure compatibility with existing logic, we'll convert after pivot.
+    user_movie_matrix_sparse = scipy.sparse.csr_matrix(user_movie_matrix.fillna(0).values)
 
-    print("\nUser-Item Matrix created. Head (first 5 rows and columns):")
-    print(user_movie_matrix.iloc[:5, :5])
-    print(f"\nShape of User-Item Matrix: {user_movie_matrix.shape}")
+    # Get the UserID and MovieID mappings for later use if needed
+    user_ids = user_movie_matrix.index
+    movie_ids = user_movie_matrix.columns
 
-    # Verify presence of NaNs (expected for unrated movies)
-    print(f"Number of NaN values in the matrix: {user_movie_matrix.isnull().sum().sum()}")
+    print("\nUser-Item Sparse Matrix created. Shape:")
+    print(f"Shape of User-Item Sparse Matrix: {user_movie_matrix_sparse.shape}")
+    print(f"Density: {user_movie_matrix_sparse.nnz / (user_movie_matrix_sparse.shape[0] * user_movie_matrix_sparse.shape[1]):.4f}")
 
-    # You might want to save this processed data for downstream tasks
-    # For example, saving to a CSV or Parquet file in a designated output directory
+    # Save the sparse matrix
     output_dir = os.path.join(os.path.dirname(data_dir), "processed_data")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
-    output_filepath = os.path.join(output_dir, "user_movie_matrix.csv")
-    user_movie_matrix.to_csv(output_filepath)
-    print(f"\nUser-Movie Matrix saved to: {output_filepath}")
+    output_filepath = os.path.join(output_dir, "user_movie_matrix.npz") # Changed to .npz
+    scipy.sparse.save_npz(output_filepath, user_movie_matrix_sparse)
+    print(f"\nUser-Movie Sparse Matrix saved to: {output_filepath}")
+
+    # Save UserIDs and MovieIDs as well, as they are lost in the sparse matrix
+    pd.DataFrame(user_ids).to_csv(os.path.join(output_dir, "user_ids.csv"), index=False)
+    pd.DataFrame(movie_ids).to_csv(os.path.join(output_dir, "movie_ids.csv"), index=False)
+    print(f"UserIDs and MovieIDs saved to {output_dir}")
 
 # Remove the __main__ block as it will be called by Airflow
 # if __name__ == "__main__":

@@ -3,6 +3,8 @@
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 import os
+import scipy.sparse
+import numpy as np
 
 def calculate_user_similarity(user_movie_matrix_path):
     """
@@ -19,25 +21,32 @@ def calculate_user_similarity(user_movie_matrix_path):
     if not os.path.exists(user_movie_matrix_path):
         raise FileNotFoundError(f"User-movie matrix not found at: {user_movie_matrix_path}")
 
-    print(f"Loading user-movie matrix from {user_movie_matrix_path}...")
-    user_movie_matrix = pd.read_csv(user_movie_matrix_path, index_col='UserID')
-    print("User-movie matrix loaded. Head:")
-    print(user_movie_matrix.iloc[:5, :5])
-    print(f"Shape: {user_movie_matrix.shape}")
+    print(f"Loading user-movie sparse matrix from {user_movie_matrix_path}...")
+    user_movie_matrix_sparse = scipy.sparse.load_npz(user_movie_matrix_path)
+    
+    # Load UserIDs (assuming they are saved in a separate CSV)
+    output_dir = os.path.dirname(user_movie_matrix_path)
+    user_ids_path = os.path.join(output_dir, "user_ids.csv")
+    if not os.path.exists(user_ids_path):
+        raise FileNotFoundError(f"UserIDs file not found at: {user_ids_path}")
+    user_ids_df = pd.read_csv(user_ids_path)
+    user_ids = user_ids_df['0'].tolist() # Assuming the column name is '0' from default to_csv
+
+    print("User-movie sparse matrix loaded.")
+    print(f"Shape: {user_movie_matrix_sparse.shape}")
 
     print("Calculating pairwise cosine similarity between users...")
-    # Cosine similarity works well with sparse data. If NaNs were present, they should be
-    # handled (e.g., filled with 0) before this step as done by op2.py.
-    user_similarity_matrix = cosine_similarity(user_movie_matrix)
+    user_similarity_matrix = cosine_similarity(user_movie_matrix_sparse)
     user_similarity_matrix_df = pd.DataFrame(user_similarity_matrix,
-                                             index=user_movie_matrix.index,
-                                             columns=user_movie_matrix.index)
+                                             index=user_ids,
+                                             columns=user_ids)
     print("User similarity matrix calculated. Head (first 5 rows and columns):")
     print(user_similarity_matrix_df.iloc[:5, :5])
     print(f"Shape: {user_similarity_matrix_df.shape}")
 
     # Save the similarity matrix
     output_dir = os.path.dirname(user_movie_matrix_path) # Assumes same output dir as user_movie_matrix
+    os.makedirs(output_dir, exist_ok=True) # Ensure the output directory exists
     similarity_output_filepath = os.path.join(output_dir, "user_similarity_matrix.csv")
     user_similarity_matrix_df.to_csv(similarity_output_filepath)
     print(f"User similarity matrix saved to: {similarity_output_filepath}")
@@ -60,13 +69,30 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
     Returns:
         list: A list of dictionaries, each containing recommended movie details and explanation.
     """
-    if not all(os.path.exists(p) for p in [user_movie_matrix_path, user_similarity_matrix_path, original_movies_path]):
-        raise FileNotFoundError("One or more required data files not found for recommendation generation.")
-
     print(f"Generating recommendations for UserID: {user_id}")
 
     # Load data
-    user_movie_matrix = pd.read_csv(user_movie_matrix_path, index_col='UserID')
+    # Load user-movie sparse matrix
+    user_movie_matrix_sparse = scipy.sparse.load_npz(user_movie_matrix_path)
+
+    # Load UserIDs and MovieIDs mappings
+    output_dir = os.path.dirname(user_movie_matrix_path)
+    user_ids_path = os.path.join(output_dir, "user_ids.csv")
+    movie_ids_path = os.path.join(output_dir, "movie_ids.csv")
+
+    if not os.path.exists(user_ids_path) or not os.path.exists(movie_ids_path):
+        raise FileNotFoundError("UserIDs or MovieIDs mapping files not found.")
+
+    user_ids_df = pd.read_csv(user_ids_path)
+    user_ids_list = user_ids_df['0'].tolist()
+    movie_ids_df = pd.read_csv(movie_ids_path)
+    movie_ids_list = movie_ids_df['0'].tolist()
+
+    # Create mappings from ID to sparse matrix index
+    user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids_list)}
+    movie_id_to_idx = {mid: idx for idx, mid in enumerate(movie_ids_list)}
+    idx_to_movie_id = {idx: mid for mid, idx in movie_id_to_idx.items()}
+
     user_similarity_matrix = pd.read_csv(user_similarity_matrix_path, index_col='UserID')
     
     # Load original movies to get titles
@@ -80,13 +106,14 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
     movies_df.set_index('MovieID', inplace=True)
 
     # Check if target user exists
-    if user_id not in user_movie_matrix.index:
+    if user_id not in user_id_to_idx:
         print(f"User {user_id} not found in the user-movie matrix.")
         return []
 
-    # Get the target user's ratings
-    target_user_ratings = user_movie_matrix.loc[user_id]
-    
+    target_user_idx = user_id_to_idx[user_id]
+    target_user_ratings_sparse = user_movie_matrix_sparse[target_user_idx, :]
+    target_user_rated_movie_indices = target_user_ratings_sparse.nonzero()[1] # Get column indices of rated movies
+
     # Get similar users (excluding the target user themselves)
     similar_users = user_similarity_matrix.loc[user_id].drop(user_id)
     similar_users = similar_users.sort_values(ascending=False)
@@ -100,23 +127,27 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
     movie_explanations = {}
 
     for similar_uid in top_similar_users:
-        if similar_uid not in user_movie_matrix.index:
-            continue # Skip if similar user not in matrix (shouldn't happen with current logic)
+        if similar_uid not in user_id_to_idx:
+            continue
 
-        # Get ratings of the similar user
-        similar_user_ratings = user_movie_matrix.loc[similar_uid]
+        similar_user_idx = user_id_to_idx[similar_uid]
+        similar_user_ratings_sparse = user_movie_matrix_sparse[similar_user_idx, :]
 
         # Find movies rated by the similar user but not by the target user
-        unseen_movies_by_target = target_user_ratings[target_user_ratings == 0].index
-        movies_rated_by_similar = similar_user_ratings[similar_user_ratings > 0].index
+        # Get movie indices rated by similar user
+        similar_user_rated_movie_indices = similar_user_ratings_sparse.nonzero()[1]
 
-        candidate_movies = unseen_movies_by_target.intersection(movies_rated_by_similar)
+        # Convert target user's rated movie indices to a set for faster lookup
+        target_user_rated_movie_indices_set = set(target_user_rated_movie_indices)
 
-        for movie_id in candidate_movies:
-            rating_by_similar = similar_user_ratings[movie_id]
-            # Simple weighted average for recommendation score
-            # You could use the similarity score as weight here
-            # For simplicity, we'll just take the rating for now and add it up for averaging
+        candidate_movie_indices = []
+        for movie_idx in similar_user_rated_movie_indices:
+            if movie_idx not in target_user_rated_movie_indices_set:
+                candidate_movie_indices.append(movie_idx)
+
+        for movie_idx in candidate_movie_indices:
+            rating_by_similar = similar_user_ratings_sparse[0, movie_idx] # Access value from sparse matrix
+            movie_id = idx_to_movie_id[movie_idx]
             
             if movie_id not in movie_scores:
                 movie_scores[movie_id] = {'total_rating': 0, 'count': 0}

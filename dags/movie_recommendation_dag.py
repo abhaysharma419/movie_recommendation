@@ -59,7 +59,7 @@ with DAG(
         task_id='calculate_user_similarity',
         python_callable=calculate_user_similarity,
         op_kwargs={
-            'user_movie_matrix_path': os.path.join(PROCESSED_DATA_DIR, "user_movie_matrix.csv")
+            'user_movie_matrix_path': os.path.join(PROCESSED_DATA_DIR, "user_movie_matrix.npz")
         },
     )
 
@@ -72,7 +72,7 @@ with DAG(
         python_callable=generate_recommendations,
         op_kwargs={
             'user_id': 1, # Example user ID
-            'user_movie_matrix_path': os.path.join(PROCESSED_DATA_DIR, "user_movie_matrix.csv"),
+            'user_movie_matrix_path': os.path.join(PROCESSED_DATA_DIR, "user_movie_matrix.npz"),
             'user_similarity_matrix_path': os.path.join(PROCESSED_DATA_DIR, "user_similarity_matrix.csv"),
             'original_movies_path': os.path.join(MOVIELENS_DATA_DIR, "movies.dat"), # Path to original movies.dat
             'n_recommendations': 10,
