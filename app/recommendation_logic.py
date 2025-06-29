@@ -30,7 +30,7 @@ def calculate_user_similarity(user_movie_matrix_path):
     if not os.path.exists(user_ids_path):
         raise FileNotFoundError(f"UserIDs file not found at: {user_ids_path}")
     user_ids_df = pd.read_csv(user_ids_path)
-    user_ids = user_ids_df['0'].tolist() # Assuming the column name is '0' from default to_csv
+    user_ids = user_ids_df['UserID'].tolist()
 
     print("User-movie sparse matrix loaded.")
     print(f"Shape: {user_movie_matrix_sparse.shape}")
@@ -84,9 +84,9 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
         raise FileNotFoundError("UserIDs or MovieIDs mapping files not found.")
 
     user_ids_df = pd.read_csv(user_ids_path)
-    user_ids_list = user_ids_df['0'].tolist()
+    user_ids_list = user_ids_df['UserID'].tolist()
     movie_ids_df = pd.read_csv(movie_ids_path)
-    movie_ids_list = movie_ids_df['0'].tolist()
+    movie_ids_list = movie_ids_df['MovieID'].tolist()
 
     # Create mappings from ID to sparse matrix index
     user_id_to_idx = {uid: idx for idx, uid in enumerate(user_ids_list)}
