@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+import scipy.sparse
 
 def process_and_merge_data(data_dir='ml-1m_dataset/ml-1m/'):
     """
@@ -170,8 +171,8 @@ def process_and_merge_data(data_dir='ml-1m_dataset/ml-1m/'):
     print(f"\nUser-Movie Sparse Matrix saved to: {output_filepath}")
 
     # Save UserIDs and MovieIDs as well, as they are lost in the sparse matrix
-    pd.DataFrame(user_ids).to_csv(os.path.join(output_dir, "user_ids.csv"), index=False)
-    pd.DataFrame(movie_ids).to_csv(os.path.join(output_dir, "movie_ids.csv"), index=False)
+    pd.DataFrame({'UserID': user_ids}).to_csv(os.path.join(output_dir, "user_ids.csv"), index=False)
+    pd.DataFrame({'MovieID': movie_ids}).to_csv(os.path.join(output_dir, "movie_ids.csv"), index=False)
     print(f"UserIDs and MovieIDs saved to {output_dir}")
 
 # Remove the __main__ block as it will be called by Airflow
