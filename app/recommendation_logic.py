@@ -132,6 +132,7 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
 
         similar_user_idx = user_id_to_idx[similar_uid]
         similar_user_ratings_sparse = user_movie_matrix_sparse[similar_user_idx, :]
+        similarity_score = user_similarity_matrix.loc[user_id, similar_uid] # Get similarity score
 
         # Find movies rated by the similar user but not by the target user
         # Get movie indices rated by similar user
@@ -150,21 +151,22 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
             movie_id = idx_to_movie_id[movie_idx]
             
             if movie_id not in movie_scores:
-                movie_scores[movie_id] = {'total_rating': 0, 'count': 0}
+                movie_scores[movie_id] = {'weighted_sum': 0, 'similarity_sum': 0}
                 movie_explanations[movie_id] = []
             
-            movie_scores[movie_id]['total_rating'] += rating_by_similar
-            movie_scores[movie_id]['count'] += 1
-            movie_explanations[movie_id].append({'user_id': similar_uid, 'rating': int(rating_by_similar)})
+            # Weighted average calculation
+            movie_scores[movie_id]['weighted_sum'] += rating_by_similar * similarity_score
+            movie_scores[movie_id]['similarity_sum'] += similarity_score
+            movie_explanations[movie_id].append({'user_id': similar_uid, 'rating': int(rating_by_similar), 'similarity': round(similarity_score, 2)})
 
-    # Calculate average score for each candidate movie
+    # Calculate weighted average score for each candidate movie
     recommended_movies = []
     for movie_id, data in movie_scores.items():
-        if data['count'] > 0:
-            avg_rating = data['total_rating'] / data['count']
+        if data['similarity_sum'] > 0:
+            weighted_avg_rating = data['weighted_sum'] / data['similarity_sum']
             recommended_movies.append({
                 'MovieID': movie_id,
-                'Average_Score': avg_rating,
+                'Average_Score': weighted_avg_rating,
                 'Explanation': movie_explanations[movie_id]
             })
 
@@ -178,7 +180,7 @@ def generate_recommendations(user_id, user_movie_matrix_path, user_similarity_ma
         movie_title = movies_df.loc[rec['MovieID']]['Title'] if rec['MovieID'] in movies_df.index else "Unknown Title"
         explanation_str_parts = []
         for exp in rec['Explanation']:
-            explanation_str_parts.append(f"User {exp['user_id']} rated it {exp['rating']}/5")
+            explanation_str_parts.append(f"User {exp['user_id']} (sim: {exp['similarity']}) rated it {exp['rating']}/5")
         
         explanation_text = f"Because similar users ({', '.join(explanation_str_parts)})"
 
